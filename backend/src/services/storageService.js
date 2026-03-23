@@ -19,6 +19,15 @@ const collectionDirectoryNames = [
   'lore',
 ]
 
+const referenceDirectoryName = 'reference'
+
+const referenceCollectionDirectoryNames = [
+  'sourcebooks',
+  'adventures',
+  'homebrew',
+  'indexes',
+]
+
 const defaultSettings = {
   provider: 'OpenAI',
   model: '',
@@ -31,9 +40,30 @@ const defaultTimeline = {
   events: [],
 }
 
+const defaultReferenceIndex = {
+  generatedAt: null,
+  recordCount: 0,
+  records: [],
+}
+
+const defaultHeadingsIndex = {
+  generatedAt: null,
+  headingCount: 0,
+  headings: [],
+}
+
+const defaultReferenceChunksIndex = {
+  generatedAt: null,
+  chunkCount: 0,
+  chunks: [],
+}
+
 const defaultStructuredFiles = {
   'settings.json': defaultSettings,
   'timeline.json': defaultTimeline,
+  'reference/indexes/reference-index.json': defaultReferenceIndex,
+  'reference/indexes/headings-index.json': defaultHeadingsIndex,
+  'reference/indexes/reference-chunks.json': defaultReferenceChunksIndex,
 }
 
 class StorageError extends Error {
@@ -165,9 +195,17 @@ export async function ensureStorageStructure() {
   await fs.mkdir(dataDirectoryPath, { recursive: true })
 
   await Promise.all(
-    collectionDirectoryNames.map((directoryName) =>
-      fs.mkdir(path.join(dataDirectoryPath, directoryName), { recursive: true }),
-    ),
+    [
+      ...collectionDirectoryNames.map((directoryName) =>
+        fs.mkdir(path.join(dataDirectoryPath, directoryName), { recursive: true }),
+      ),
+      ...referenceCollectionDirectoryNames.map((directoryName) =>
+        fs.mkdir(
+          path.join(dataDirectoryPath, referenceDirectoryName, directoryName),
+          { recursive: true },
+        ),
+      ),
+    ],
   )
 
   await Promise.all(
@@ -249,7 +287,12 @@ export {
   StorageError,
   collectionDirectoryNames,
   dataDirectoryPath,
+  defaultReferenceChunksIndex,
   defaultSettings,
+  defaultReferenceIndex,
   defaultStructuredFiles,
+  defaultHeadingsIndex,
   defaultTimeline,
+  referenceCollectionDirectoryNames,
+  referenceDirectoryName,
 }

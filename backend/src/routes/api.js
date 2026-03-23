@@ -21,8 +21,28 @@ import {
   listWorldBibleEntries,
   WorldBibleError,
 } from '../services/worldBibleService.js'
+import {
+  readReferenceMarkdown,
+  ReferenceLibraryError,
+  referenceCollectionDirectoryNames,
+  searchReferenceSources,
+} from '../services/referenceLibraryService.js'
 
 const router = Router()
+
+function parseReferenceLimit(value) {
+  if (typeof value === 'undefined') {
+    return 25
+  }
+
+  const parsed = Number(value)
+
+  if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 100) {
+    throw new ReferenceLibraryError('Reference search limit must be 1-100.')
+  }
+
+  return parsed
+}
 
 router.get('/health', (_req, res) => {
   res.json({
@@ -32,6 +52,68 @@ router.get('/health', (_req, res) => {
     timestamp: new Date().toISOString(),
     port: Number(process.env.PORT) || 3001,
   })
+})
+
+router.get('/references', async (req, res, next) => {
+  try {
+    const query =
+      typeof req.query.query === 'string' ? req.query.query.trim() : ''
+    const category =
+      typeof req.query.category === 'string' ? req.query.category.trim() : ''
+    const limit = parseReferenceLimit(req.query.limit)
+    const items = await searchReferenceSources({
+      query,
+      category,
+      limit,
+    })
+
+    res.json({
+      items,
+      query,
+      category: category || null,
+      categories: referenceCollectionDirectoryNames,
+      limit,
+      localOnly: true,
+    })
+  } catch (error) {
+    if (error instanceof ReferenceLibraryError) {
+      res.status(error.statusCode).json({
+        message: error.message,
+      })
+
+      return
+    }
+
+    next(error)
+  }
+})
+
+router.get('/references/content', async (req, res, next) => {
+  const referencePath = typeof req.query.path === 'string' ? req.query.path : ''
+
+  if (!referencePath.trim()) {
+    res.status(400).json({
+      message: 'Reference path is required.',
+    })
+
+    return
+  }
+
+  try {
+    const reference = await readReferenceMarkdown(referencePath)
+
+    res.json(reference)
+  } catch (error) {
+    if (error instanceof ReferenceLibraryError) {
+      res.status(error.statusCode).json({
+        message: error.message,
+      })
+
+      return
+    }
+
+    next(error)
+  }
 })
 
 router.get('/chronicle', async (_req, res, next) => {
