@@ -1,0 +1,21 @@
+{
+  "name": "mythic-chronicle-backend",
+  "version": "1.0.0",
+  "description": "Express backend for Mythic Chronicle",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js"
+  },
+  "keywords": [
+    "express",
+    "backend",
+    "local-only"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}

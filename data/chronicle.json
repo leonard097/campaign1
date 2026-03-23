@@ -1,0 +1,41 @@
+{
+  "projectName": "Mythic Chronicle",
+  "focus": "A personal D&D storytelling and novel writing assistant",
+  "storageMode": "Local JSON files",
+  "currentCampaign": {
+    "name": "The Shattered Compass",
+    "tone": "Mythic fantasy, mystery, and political intrigue",
+    "currentObjective": "Recover the obsidian map fragment from the drowned archive.",
+    "party": [
+      {
+        "name": "Aelar Thorne",
+        "role": "Ranger cartographer"
+      },
+      {
+        "name": "Mira Vale",
+        "role": "Cleric historian"
+      },
+      {
+        "name": "Bram Coal",
+        "role": "Fighter bodyguard"
+      }
+    ]
+  },
+  "storyGoals": [
+    "Track canon across sessions and chapter drafts.",
+    "Capture NPC motivations, secrets, and evolving alliances.",
+    "Collect scene hooks for both campaign play and novel prose.",
+    "Keep a running backlog of themes, symbols, and unresolved threads."
+  ],
+  "writingLanes": [
+    "Session recap drafts",
+    "NPC dossiers",
+    "Location lore notes",
+    "Novel outline fragments"
+  ],
+  "nextMilestones": [
+    "Add editable campaign notes and scene summaries.",
+    "Store chapter ideas and revision checkpoints.",
+    "Generate reusable prompts for session prep and prose drafting."
+  ]
+}

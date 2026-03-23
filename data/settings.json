@@ -1,0 +1,6 @@
+{
+  "provider": "OpenAI",
+  "model": "",
+  "openaiApiKey": "",
+  "geminiApiKey": ""
+}
