@@ -55,6 +55,9 @@ The Vite frontend proxies `/api` requests to the local Express backend during de
 - `GET /api/chronicle`
 - `GET /api/references`
 - `GET /api/references/content?path=reference/sourcebooks/example.md`
+- `GET /api/reference/search?q=grappling`
+- `GET /api/reference/document/:id`
+- `GET /api/reference/chunk/:chunkId`
 
 ## Notes
 
@@ -64,4 +67,5 @@ The Vite frontend proxies `/api` requests to the local Express backend during de
 - Place your own `.md` files anywhere inside those folders. The backend scans them recursively, parses each markdown source into a structured record, and keeps JSON indexes at `/data/reference/indexes/reference-index.json`, `/data/reference/indexes/headings-index.json`, and `/data/reference/indexes/reference-chunks.json`.
 - Parsed reference records include stable IDs, titles, inferred source metadata, headings, tags, summaries, raw markdown, filename, and modified date for local search and lookup.
 - The ingestion pipeline also splits files into smaller heading-aware chunks with preserved heading paths, token estimates, and per-chunk tags for future chunk-level search.
+- `/api/reference/search` supports keyword search plus optional `sourceType`, `sourceName`, and `limit` query params. Search ranking prefers title matches, then heading matches, then body matches.
 - This scaffold is designed for local use only and is a clean starting point for future worldbuilding, session recap, and writing tools.

@@ -27,6 +27,12 @@ import {
   referenceCollectionDirectoryNames,
   searchReferenceSources,
 } from '../services/referenceLibraryService.js'
+import {
+  getReferenceChunkById,
+  getReferenceDocumentById,
+  ReferenceSearchError,
+  searchReferences,
+} from '../services/referenceSearchService.js'
 
 const router = Router()
 
@@ -105,6 +111,70 @@ router.get('/references/content', async (req, res, next) => {
     res.json(reference)
   } catch (error) {
     if (error instanceof ReferenceLibraryError) {
+      res.status(error.statusCode).json({
+        message: error.message,
+      })
+
+      return
+    }
+
+    next(error)
+  }
+})
+
+router.get('/reference/search', async (req, res, next) => {
+  try {
+    const results = await searchReferences({
+      query: typeof req.query.q === 'string' ? req.query.q : '',
+      sourceType:
+        typeof req.query.sourceType === 'string' ? req.query.sourceType : '',
+      sourceName:
+        typeof req.query.sourceName === 'string' ? req.query.sourceName : '',
+      limit: req.query.limit,
+    })
+
+    res.json({
+      ...results,
+      localOnly: true,
+    })
+  } catch (error) {
+    if (error instanceof ReferenceSearchError) {
+      res.status(error.statusCode).json({
+        message: error.message,
+      })
+
+      return
+    }
+
+    next(error)
+  }
+})
+
+router.get('/reference/document/:id', async (req, res, next) => {
+  try {
+    const document = await getReferenceDocumentById(req.params.id)
+
+    res.json(document)
+  } catch (error) {
+    if (error instanceof ReferenceSearchError) {
+      res.status(error.statusCode).json({
+        message: error.message,
+      })
+
+      return
+    }
+
+    next(error)
+  }
+})
+
+router.get('/reference/chunk/:chunkId', async (req, res, next) => {
+  try {
+    const chunk = await getReferenceChunkById(req.params.chunkId)
+
+    res.json(chunk)
+  } catch (error) {
+    if (error instanceof ReferenceSearchError) {
       res.status(error.statusCode).json({
         message: error.message,
       })
