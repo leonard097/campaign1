@@ -44,6 +44,38 @@ export async function getSettings(signal) {
   return fetchJson('/api/settings', { signal })
 }
 
+export async function searchReferenceLibrary(params = {}, signal) {
+  const searchParams = new URLSearchParams()
+
+  if (typeof params.q === 'string' && params.q.trim()) {
+    searchParams.set('q', params.q.trim())
+  }
+
+  if (typeof params.sourceType === 'string' && params.sourceType.trim()) {
+    searchParams.set('sourceType', params.sourceType.trim())
+  }
+
+  if (typeof params.sourceName === 'string' && params.sourceName.trim()) {
+    searchParams.set('sourceName', params.sourceName.trim())
+  }
+
+  if (typeof params.limit !== 'undefined') {
+    searchParams.set('limit', String(params.limit))
+  }
+
+  const query = searchParams.toString()
+
+  return fetchJson(`/api/reference/search${query ? `?${query}` : ''}`, { signal })
+}
+
+export async function getReferenceDocument(id, signal) {
+  return fetchJson(`/api/reference/document/${encodeURIComponent(id)}`, { signal })
+}
+
+export async function getReferenceChunk(chunkId, signal) {
+  return fetchJson(`/api/reference/chunk/${encodeURIComponent(chunkId)}`, { signal })
+}
+
 export async function saveSettings(settings) {
   return fetchJson('/api/settings', {
     method: 'PUT',

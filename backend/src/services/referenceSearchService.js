@@ -295,9 +295,10 @@ function scoreDocument(document, normalizedQuery, queryTokens, chunks) {
 
   const headingScore = Math.max(documentHeadingScore, bestChunkScores.heading)
   const bodyScore = bestChunkScores.body
+  const fallbackChunk = bestChunk || chunks[0] || null
 
   return {
-    bestChunk,
+    bestChunk: fallbackChunk,
     scores: {
       title: titleScore,
       heading: headingScore,

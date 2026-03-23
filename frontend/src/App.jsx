@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { generateStory, getSettings, saveSettings } from './lib/api'
 import AdventureBuilderPanel from './components/AdventureBuilderPanel'
 import ChaptersPanel from './components/ChaptersPanel'
+import ReferenceLibraryPanel from './components/ReferenceLibraryPanel'
 import WorldBiblePanel from './components/WorldBiblePanel'
 import './App.css'
 
@@ -63,6 +64,39 @@ const tabs = [
         label: 'Placeholder',
         title: 'Draft instruments',
         text: 'Future controls for prompts, revisions, and scene cards can slot in here without changing the overall layout.',
+      },
+    ],
+  },
+  {
+    id: 'reference-library',
+    label: 'Reference Library',
+    kicker: 'Source Archive',
+    title: 'Search the local shelves of rules, lore, and adventure text',
+    description:
+      'Query your personal markdown sourcebooks, adventures, homebrew notes, and indexes from one focused reference surface.',
+    spotlight:
+      'Searches rank title matches first, then headings, then body text, while preview panes pull from the local reference indexes and chunks.',
+    tags: ['Keyword search', 'Source filters', 'Chunk preview'],
+    cards: [
+      {
+        label: 'Planned Focus',
+        title: 'Reference stack',
+        text: 'A dedicated browse surface for fast lookup across sourcebooks, adventures, and homebrew material stored locally as markdown.',
+        wide: true,
+      },
+      {
+        label: 'Search',
+        title: 'Signal over noise',
+        items: [
+          'Title matches rise to the top first',
+          'Heading paths stay visible during chunking',
+          'Previews stay grounded in local source text',
+        ],
+      },
+      {
+        label: 'Placeholder',
+        title: 'Future citations',
+        text: 'This space can later grow into citations, bookmarks, and saved searches without changing the layout language.',
       },
     ],
   },
@@ -605,6 +639,8 @@ function App() {
             </section>
           ) : activeTab.id === 'world-bible' ? (
             <WorldBiblePanel />
+          ) : activeTab.id === 'reference-library' ? (
+            <ReferenceLibraryPanel />
           ) : activeTab.id === 'chapters' ? (
             <ChaptersPanel
               latestStoryText={storyOutput}
@@ -794,6 +830,8 @@ function App() {
             <p className="content-footer__text">
               {activeTab.id === 'story-engine'
                 ? 'Story Engine is active. Generate now sends your prompt and control selections to the local /api/generate route, which uses the provider configured in Settings.'
+                : activeTab.id === 'reference-library'
+                  ? 'Reference Library is active. Searches now query the local reference indexes and chunk records so you can browse sourcebooks, adventures, and homebrew text with a preview pane.'
                 : activeTab.id === 'world-bible'
                   ? 'World Bible is active. Entries are searchable, filterable by tag, and saved as linked local markdown files in the matching /data collection folders.'
                   : activeTab.id === 'chapters'
