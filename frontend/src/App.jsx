@@ -1,5 +1,13 @@
 import { useEffect, useState } from 'react'
-import { generateStory, getSettings, saveSettings } from './lib/api'
+import {
+  createSourceNote,
+  createWorldBibleEntry,
+  generateStory,
+  getReferenceIndexStatus,
+  getSettings,
+  rebuildReferenceIndex,
+  saveSettings,
+} from './lib/api'
 import AdventureBuilderPanel from './components/AdventureBuilderPanel'
 import ChaptersPanel from './components/ChaptersPanel'
 import ReferenceLibraryPanel from './components/ReferenceLibraryPanel'
@@ -22,12 +30,25 @@ const povOptions = [
   'Character-focused',
 ]
 const providerOptions = ['OpenAI', 'Gemini']
+const canonModeOptions = [
+  'Prefer Homebrew',
+  'Prefer Official Sources',
+  'Balanced',
+]
 
 const initialSettingsForm = {
   provider: 'OpenAI',
   model: '',
   openaiApiKey: '',
   geminiApiKey: '',
+  canonMode: 'Balanced',
+}
+
+const initialReferenceIndexStatus = {
+  indexedFileCount: 0,
+  indexedHeadingCount: 0,
+  indexedChunkCount: 0,
+  lastIndexedAt: '',
 }
 
 const initialStoryOutput =
@@ -270,6 +291,8 @@ const tabs = [
 function normalizeSettingsForm(value = {}) {
   const input =
     typeof value === 'object' && value !== null && !Array.isArray(value) ? value : {}
+  const rawCanonMode =
+    typeof input.canonMode === 'string' ? input.canonMode.trim() : ''
 
   return {
     provider: input.provider === 'Gemini' ? 'Gemini' : 'OpenAI',
@@ -278,7 +301,156 @@ function normalizeSettingsForm(value = {}) {
       typeof input.openaiApiKey === 'string' ? input.openaiApiKey : '',
     geminiApiKey:
       typeof input.geminiApiKey === 'string' ? input.geminiApiKey : '',
+    canonMode: canonModeOptions.includes(rawCanonMode)
+      ? rawCanonMode
+      : 'Balanced',
   }
+}
+
+function normalizeReferenceIndexStatus(value = {}) {
+  const input =
+    typeof value === 'object' && value !== null && !Array.isArray(value) ? value : {}
+
+  return {
+    indexedFileCount:
+      typeof input.indexedFileCount === 'number' ? input.indexedFileCount : 0,
+    indexedHeadingCount:
+      typeof input.indexedHeadingCount === 'number' ? input.indexedHeadingCount : 0,
+    indexedChunkCount:
+      typeof input.indexedChunkCount === 'number' ? input.indexedChunkCount : 0,
+    lastIndexedAt:
+      typeof input.lastIndexedAt === 'string' ? input.lastIndexedAt : '',
+  }
+}
+
+function normalizeReferenceContextChunk(value) {
+  return {
+    chunkId: typeof value?.chunkId === 'string' ? value.chunkId : '',
+    documentId: typeof value?.documentId === 'string' ? value.documentId : '',
+    title: typeof value?.title === 'string' ? value.title : 'Untitled reference',
+    sourceType:
+      typeof value?.sourceType === 'string' ? value.sourceType : 'unknown',
+    sourceName:
+      typeof value?.sourceName === 'string' ? value.sourceName : 'Unknown source',
+    headingPath: Array.isArray(value?.headingPath) ? value.headingPath : [],
+    text: typeof value?.text === 'string' ? value.text : '',
+    filePath: typeof value?.filePath === 'string' ? value.filePath : '',
+  }
+}
+
+function formatReferenceHeadingPath(chunk) {
+  return Array.isArray(chunk.headingPath) && chunk.headingPath.length
+    ? chunk.headingPath.join(' > ')
+    : chunk.title
+}
+
+function formatReferenceBlock(chunk) {
+  return [
+    '[Reference Context]',
+    `Source: ${chunk.title} (${chunk.sourceType}: ${chunk.sourceName})`,
+    `Heading: ${formatReferenceHeadingPath(chunk)}`,
+    `Excerpt: ${chunk.text.trim()}`,
+  ].join('\n')
+}
+
+function buildLoreEntryDescription(chunk) {
+  return [
+    `# ${chunk.title}`,
+    '',
+    `- Source Type: ${chunk.sourceType}`,
+    `- Source Name: ${chunk.sourceName}`,
+    `- Heading Path: ${formatReferenceHeadingPath(chunk)}`,
+    `- File Path: ${chunk.filePath}`,
+    '',
+    '## Reference Excerpt',
+    '',
+    `> ${chunk.text.trim()}`,
+    '',
+    '## Homebrew Use',
+    '',
+    'Adapt, reinterpret, or reconcile this reference into your own setting canon.',
+  ].join('\n')
+}
+
+function buildAdventureHookSeed(chunk) {
+  return [
+    `# Adventure Hook Seed: ${chunk.title}`,
+    '',
+    `Source: ${chunk.sourceType} / ${chunk.sourceName}`,
+    `Heading Path: ${formatReferenceHeadingPath(chunk)}`,
+    '',
+    '## Canon Spark',
+    '',
+    chunk.text.trim(),
+    '',
+    '## Hook Direction',
+    '',
+    'Turn this source material into a quest hook, rumor, faction pressure point, or encounter setup for the party.',
+  ].join('\n')
+}
+
+function buildChapterReferenceNote(chunk) {
+  return [
+    `## Reference Note: ${chunk.title}`,
+    '',
+    `Source: ${chunk.sourceType} / ${chunk.sourceName}`,
+    `Heading Path: ${formatReferenceHeadingPath(chunk)}`,
+    '',
+    chunk.text.trim(),
+  ].join('\n')
+}
+
+function buildSourceNotePayload(chunk) {
+  return {
+    title: `${chunk.title} source note`,
+    sourceType: chunk.sourceType,
+    sourceName: chunk.sourceName,
+    referenceDocumentId: chunk.documentId,
+    referenceChunkId: chunk.chunkId,
+    headingPath: chunk.headingPath,
+    tags: [chunk.sourceType, chunk.sourceName, ...chunk.headingPath]
+      .map((value) => value.toLowerCase())
+      .filter(Boolean),
+    content: [
+      `# ${chunk.title}`,
+      '',
+      `Source: ${chunk.sourceType} / ${chunk.sourceName}`,
+      `Heading: ${formatReferenceHeadingPath(chunk)}`,
+      `File: ${chunk.filePath}`,
+      '',
+      '## Saved Excerpt',
+      '',
+      chunk.text.trim(),
+    ].join('\n'),
+  }
+}
+
+function formatReferenceSnippet(text, maxLength = 180) {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+
+  if (!normalized) {
+    return 'No reference snippet available.'
+  }
+
+  return normalized.length <= maxLength
+    ? normalized
+    : `${normalized.slice(0, maxLength - 3).trimEnd()}...`
+}
+
+function formatSourceTypeLabel(value) {
+  if (!value) {
+    return 'Unknown'
+  }
+
+  return `${value.charAt(0).toUpperCase()}${value.slice(1)}`
+}
+
+function formatIndexedAt(value) {
+  if (!value) {
+    return 'Not indexed yet'
+  }
+
+  return new Date(value).toLocaleString()
 }
 
 function App() {
@@ -294,12 +466,28 @@ function App() {
   const [storyProvider, setStoryProvider] = useState('')
   const [storyModel, setStoryModel] = useState('')
   const [storyGeneratedAt, setStoryGeneratedAt] = useState('')
+  const [useReferenceLibrary, setUseReferenceLibrary] = useState(false)
+  const [storyReferenceContextCount, setStoryReferenceContextCount] = useState(0)
+  const [storyReferenceResults, setStoryReferenceResults] = useState([])
+  const [storyReferenceActionMessage, setStoryReferenceActionMessage] = useState('')
+  const [storyReferenceActionError, setStoryReferenceActionError] = useState('')
+  const [storyReferenceActionPending, setStoryReferenceActionPending] = useState('')
+  const [referenceHookHandoff, setReferenceHookHandoff] = useState(null)
+  const [referenceChapterHandoff, setReferenceChapterHandoff] = useState(null)
   const [settingsForm, setSettingsForm] = useState(initialSettingsForm)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [settingsError, setSettingsError] = useState('')
   const [settingsSuccess, setSettingsSuccess] = useState('')
+  const [referenceIndexStatus, setReferenceIndexStatus] = useState(
+    initialReferenceIndexStatus,
+  )
+  const [referenceIndexLoaded, setReferenceIndexLoaded] = useState(false)
+  const [referenceIndexLoading, setReferenceIndexLoading] = useState(false)
+  const [referenceIndexRebuilding, setReferenceIndexRebuilding] = useState(false)
+  const [referenceIndexError, setReferenceIndexError] = useState('')
+  const [referenceIndexSuccess, setReferenceIndexSuccess] = useState('')
   const activeTab = tabs.find((tab) => tab.id === selectedTab) ?? tabs[0]
   const panelStatus = activeTab.id === 'timeline' ? 'Static Layout' : 'Local Panel'
 
@@ -338,6 +526,41 @@ function App() {
     return () => controller.abort()
   }, [selectedTab, settingsLoaded])
 
+  useEffect(() => {
+    if (selectedTab !== 'settings' || referenceIndexLoaded) {
+      return undefined
+    }
+
+    const controller = new AbortController()
+
+    async function loadReferenceIndexStatus() {
+      setReferenceIndexLoading(true)
+      setReferenceIndexError('')
+      setReferenceIndexSuccess('')
+
+      try {
+        const status = await getReferenceIndexStatus(controller.signal)
+
+        setReferenceIndexStatus(normalizeReferenceIndexStatus(status))
+        setReferenceIndexLoaded(true)
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          return
+        }
+
+        setReferenceIndexError(
+          'Unable to load reference index status from the local backend.',
+        )
+      } finally {
+        setReferenceIndexLoading(false)
+      }
+    }
+
+    loadReferenceIndexStatus()
+
+    return () => controller.abort()
+  }, [selectedTab, referenceIndexLoaded])
+
   async function handleGenerate() {
     const trimmedPrompt = storyPrompt.trim()
 
@@ -348,6 +571,10 @@ function App() {
 
     setStoryGenerating(true)
     setStoryError('')
+    setStoryReferenceActionMessage('')
+    setStoryReferenceActionError('')
+    setStoryReferenceResults([])
+    setStoryReferenceContextCount(0)
 
     try {
       const response = await generateStory({
@@ -356,12 +583,23 @@ function App() {
         tone: toneLevels[toneIndex],
         narrationStrength: narrationLevels[narrationIndex],
         pov,
+        useReferenceLibrary,
       })
 
       setStoryOutput(response.text)
       setStoryProvider(response.provider)
       setStoryModel(response.model)
       setStoryGeneratedAt(response.generatedAt)
+      setStoryReferenceContextCount(
+        typeof response.referenceContextCount === 'number'
+          ? response.referenceContextCount
+          : 0,
+      )
+      setStoryReferenceResults(
+        Array.isArray(response.referenceContextChunks)
+          ? response.referenceContextChunks.map(normalizeReferenceContextChunk)
+          : [],
+      )
     } catch (error) {
       setStoryError(
         error.message ||
@@ -382,6 +620,98 @@ function App() {
     setSettingsSuccess('')
   }
 
+  function clearReferenceActionMessages() {
+    setStoryReferenceActionMessage('')
+    setStoryReferenceActionError('')
+  }
+
+  function handleInsertReferenceIntoStoryContext(chunk) {
+    setStoryPrompt((currentPrompt) => {
+      const referenceBlock = formatReferenceBlock(chunk)
+
+      return currentPrompt.trim()
+        ? `${currentPrompt.trim()}\n\n${referenceBlock}`
+        : referenceBlock
+    })
+    setSelectedTab('story-engine')
+    setStoryReferenceActionError('')
+    setStoryReferenceActionMessage(
+      `"${chunk.title}" was inserted into the Story Engine prompt as reference context.`,
+    )
+  }
+
+  async function handleAddReferenceToLoreEntry(chunk) {
+    setStoryReferenceActionPending(`lore:${chunk.chunkId}`)
+    clearReferenceActionMessages()
+
+    try {
+      await createWorldBibleEntry({
+        type: 'History',
+        title: `${chunk.title} reference`,
+        tags: [chunk.sourceType, chunk.sourceName, ...chunk.headingPath],
+        description: buildLoreEntryDescription(chunk),
+        links: [],
+      })
+
+      setStoryReferenceActionMessage(
+        `"${chunk.title}" was saved to the World Bible as a lore entry.`,
+      )
+    } catch (error) {
+      setStoryReferenceActionError(
+        error.message ||
+          'Unable to add the selected reference to the World Bible.',
+      )
+    } finally {
+      setStoryReferenceActionPending('')
+    }
+  }
+
+  function handleConvertReferenceToAdventureHook(chunk) {
+    setReferenceHookHandoff({
+      title: chunk.title,
+      content: buildAdventureHookSeed(chunk),
+      createdAt: new Date().toISOString(),
+    })
+    setSelectedTab('adventure-builder')
+    setStoryReferenceActionError('')
+    setStoryReferenceActionMessage(
+      `"${chunk.title}" was staged as an adventure hook handoff.`,
+    )
+  }
+
+  function handleLinkReferenceToCurrentChapter(chunk) {
+    setReferenceChapterHandoff({
+      title: chunk.title,
+      content: buildChapterReferenceNote(chunk),
+      createdAt: new Date().toISOString(),
+    })
+    setSelectedTab('chapters')
+    setStoryReferenceActionError('')
+    setStoryReferenceActionMessage(
+      `"${chunk.title}" was staged for chapter linking.`,
+    )
+  }
+
+  async function handleSaveReferenceAsSourceNote(chunk) {
+    setStoryReferenceActionPending(`note:${chunk.chunkId}`)
+    clearReferenceActionMessages()
+
+    try {
+      await createSourceNote(buildSourceNotePayload(chunk))
+
+      setStoryReferenceActionMessage(
+        `"${chunk.title}" was saved as a local source note.`,
+      )
+    } catch (error) {
+      setStoryReferenceActionError(
+        error.message ||
+          'Unable to save the selected reference as a source note.',
+      )
+    } finally {
+      setStoryReferenceActionPending('')
+    }
+  }
+
   async function handleSettingsSave(event) {
     event.preventDefault()
     setSettingsSaving(true)
@@ -400,6 +730,31 @@ function App() {
       )
     } finally {
       setSettingsSaving(false)
+    }
+  }
+
+  async function handleRebuildReferenceIndex() {
+    setReferenceIndexRebuilding(true)
+    setReferenceIndexError('')
+    setReferenceIndexSuccess('')
+
+    try {
+      const nextStatus = normalizeReferenceIndexStatus(
+        await rebuildReferenceIndex(),
+      )
+
+      setReferenceIndexStatus(nextStatus)
+      setReferenceIndexLoaded(true)
+      setReferenceIndexSuccess(
+        `Rebuilt the reference library indexes for ${nextStatus.indexedFileCount} files and ${nextStatus.indexedChunkCount} chunks.`,
+      )
+    } catch (error) {
+      setReferenceIndexError(
+        error.message ||
+          'Unable to rebuild the reference library indexes from /data/reference.',
+      )
+    } finally {
+      setReferenceIndexRebuilding(false)
     }
   }
 
@@ -568,6 +923,28 @@ function App() {
                   </div>
                 </div>
 
+                <label
+                  className="story-engine__toggle"
+                  htmlFor="story-reference-library"
+                >
+                  <input
+                    id="story-reference-library"
+                    className="story-engine__toggle-input"
+                    type="checkbox"
+                    checked={useReferenceLibrary}
+                    onChange={(event) =>
+                      setUseReferenceLibrary(event.target.checked)
+                    }
+                  />
+                  <span className="story-engine__toggle-copy">
+                    <strong>Use Reference Library</strong>
+                    <small>
+                      Search top matching local reference chunks and inject them as concise
+                      Reference Context before generation.
+                    </small>
+                  </span>
+                </label>
+
                 <button
                   type="button"
                   className="generate-button"
@@ -576,6 +953,16 @@ function App() {
                 >
                   {storyGenerating ? 'Generating...' : 'Generate'}
                 </button>
+
+                {useReferenceLibrary ? (
+                  <div className="story-engine__reference-status">
+                    <p className="content-card__label">Reference Retrieval</p>
+                    <p className="story-engine__reference-status-text">
+                      When matches are found, you can turn them into lore notes, chapter links,
+                      adventure hooks, or direct story context from this panel.
+                    </p>
+                  </div>
+                ) : null}
               </div>
 
               <aside className="story-engine__output">
@@ -634,7 +1021,127 @@ function App() {
                         : 'Not generated yet'}
                     </strong>
                   </li>
+                  <li>
+                    <span>Reference Library</span>
+                    <strong>
+                      {useReferenceLibrary
+                        ? storyReferenceContextCount > 0
+                          ? `${storyReferenceContextCount} chunks used`
+                          : 'Enabled'
+                        : 'Disabled'}
+                    </strong>
+                  </li>
                 </ul>
+
+                {useReferenceLibrary ? (
+                  <div className="story-engine__reference-actions">
+                    <div className="story-engine__reference-actions-head">
+                      <div>
+                        <p className="content-card__label">Reference Actions</p>
+                        <h3>Matched reference chunks</h3>
+                      </div>
+                      <span className="story-engine__reference-hint">
+                        {storyReferenceResults.length
+                          ? `${storyReferenceResults.length} chunks ready`
+                          : 'No chunks found yet'}
+                      </span>
+                    </div>
+
+                    {storyReferenceActionError ? (
+                      <p className="form-message form-message--error">
+                        {storyReferenceActionError}
+                      </p>
+                    ) : null}
+
+                    {storyReferenceActionMessage ? (
+                      <p className="form-message form-message--success">
+                        {storyReferenceActionMessage}
+                      </p>
+                    ) : null}
+
+                    {storyReferenceResults.length ? (
+                      <div className="story-engine__reference-list">
+                        {storyReferenceResults.map((chunk) => (
+                          <article
+                            key={chunk.chunkId}
+                            className="story-engine__reference-card"
+                          >
+                            <div className="story-engine__reference-card-head">
+                              <strong>{chunk.title}</strong>
+                              <span>{formatSourceTypeLabel(chunk.sourceType)}</span>
+                            </div>
+
+                            <div className="story-engine__reference-meta">
+                              <span>{chunk.sourceName}</span>
+                              <span>{formatReferenceHeadingPath(chunk)}</span>
+                            </div>
+
+                            <p>{formatReferenceSnippet(chunk.text)}</p>
+
+                            <div className="story-engine__reference-button-row">
+                              <button
+                                type="button"
+                                className="story-engine__reference-button"
+                                onClick={() =>
+                                  handleInsertReferenceIntoStoryContext(chunk)
+                                }
+                              >
+                                Insert into story context
+                              </button>
+                              <button
+                                type="button"
+                                className="story-engine__reference-button"
+                                onClick={() => handleAddReferenceToLoreEntry(chunk)}
+                                disabled={
+                                  storyReferenceActionPending === `lore:${chunk.chunkId}`
+                                }
+                              >
+                                {storyReferenceActionPending === `lore:${chunk.chunkId}`
+                                  ? 'Saving lore...'
+                                  : 'Add to lore entry'}
+                              </button>
+                              <button
+                                type="button"
+                                className="story-engine__reference-button"
+                                onClick={() =>
+                                  handleConvertReferenceToAdventureHook(chunk)
+                                }
+                              >
+                                Convert to adventure hook
+                              </button>
+                              <button
+                                type="button"
+                                className="story-engine__reference-button"
+                                onClick={() =>
+                                  handleLinkReferenceToCurrentChapter(chunk)
+                                }
+                              >
+                                Link to current chapter
+                              </button>
+                              <button
+                                type="button"
+                                className="story-engine__reference-button"
+                                onClick={() => handleSaveReferenceAsSourceNote(chunk)}
+                                disabled={
+                                  storyReferenceActionPending === `note:${chunk.chunkId}`
+                                }
+                              >
+                                {storyReferenceActionPending === `note:${chunk.chunkId}`
+                                  ? 'Saving note...'
+                                  : 'Save as source note'}
+                              </button>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="story-engine__reference-empty">
+                        Generate with Reference Library enabled to surface actionable source
+                        chunks here.
+                      </p>
+                    )}
+                  </div>
+                ) : null}
               </aside>
             </section>
           ) : activeTab.id === 'world-bible' ? (
@@ -646,11 +1153,14 @@ function App() {
               latestStoryText={storyOutput}
               latestStoryGeneratedAt={storyGeneratedAt}
               defaultPov={pov}
+              referenceLinkHandoff={referenceChapterHandoff}
+              onConsumeReferenceLink={() => setReferenceChapterHandoff(null)}
             />
           ) : activeTab.id === 'adventure-builder' ? (
             <AdventureBuilderPanel
               latestStoryText={storyOutput}
               latestStoryGeneratedAt={storyGeneratedAt}
+              referenceHookHandoff={referenceHookHandoff}
             />
           ) : activeTab.id === 'settings' ? (
             <section className="settings-panel">
@@ -661,7 +1171,8 @@ function App() {
                   <p className="content-card__text">
                     These keys are saved only to the local backend file at{' '}
                     <code>/data/settings.json</code>. This screen does not send
-                    them to OpenAI or Gemini.
+                    them to OpenAI or Gemini. Canon Mode also lives here and
+                    guides how local reference sources are ranked.
                   </p>
                 </div>
 
@@ -699,6 +1210,25 @@ function App() {
                       disabled={settingsLoading || settingsSaving}
                       spellCheck={false}
                     />
+                  </div>
+
+                  <div className="settings-panel__field settings-panel__field--full">
+                    <label htmlFor="settings-canon-mode">Canon Mode</label>
+                    <select
+                      id="settings-canon-mode"
+                      className="settings-panel__select"
+                      value={settingsForm.canonMode}
+                      onChange={(event) =>
+                        handleSettingsChange('canonMode', event.target.value)
+                      }
+                      disabled={settingsLoading || settingsSaving}
+                    >
+                      {canonModeOptions.map((canonMode) => (
+                        <option key={canonMode} value={canonMode}>
+                          {canonMode}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="settings-panel__field settings-panel__field--full">
@@ -761,6 +1291,72 @@ function App() {
                     {settingsSuccess}
                   </p>
                 ) : null}
+
+                <section className="settings-panel__reference">
+                  <div className="settings-panel__summary">
+                    <p className="content-card__label">Reference Library Index</p>
+                    <h3>Rebuild local search indexes</h3>
+                    <p className="content-card__text">
+                      Rescan <code>/data/reference</code>, rebuild the JSON indexes,
+                      and refresh the searchable file and chunk counts used by the app.
+                    </p>
+                  </div>
+
+                  <div className="settings-panel__reference-meta">
+                    <div>
+                      <span>Indexed files</span>
+                      <strong>{referenceIndexStatus.indexedFileCount}</strong>
+                    </div>
+                    <div>
+                      <span>Indexed chunks</span>
+                      <strong>{referenceIndexStatus.indexedChunkCount}</strong>
+                    </div>
+                    <div>
+                      <span>Indexed headings</span>
+                      <strong>{referenceIndexStatus.indexedHeadingCount}</strong>
+                    </div>
+                    <div>
+                      <span>Last indexed</span>
+                      <strong>{formatIndexedAt(referenceIndexStatus.lastIndexedAt)}</strong>
+                    </div>
+                  </div>
+
+                  <div className="settings-panel__actions">
+                    <button
+                      type="button"
+                      className="settings-panel__button"
+                      onClick={handleRebuildReferenceIndex}
+                      disabled={
+                        settingsLoading ||
+                        settingsSaving ||
+                        referenceIndexLoading ||
+                        referenceIndexRebuilding
+                      }
+                    >
+                      {referenceIndexRebuilding
+                        ? 'Rebuilding...'
+                        : 'Rebuild Reference Index'}
+                    </button>
+
+                    <span className="settings-panel__hint">
+                      {referenceIndexLoading
+                        ? 'Loading current index status...'
+                        : 'Rescans local markdown and rewrites every reference index file.'}
+                    </span>
+                  </div>
+
+                  {referenceIndexError ? (
+                    <p className="form-message form-message--error">
+                      {referenceIndexError}
+                    </p>
+                  ) : null}
+
+                  {referenceIndexSuccess ? (
+                    <p className="form-message form-message--success">
+                      {referenceIndexSuccess}
+                    </p>
+                  ) : null}
+                </section>
               </form>
 
               <aside className="settings-panel__info">
@@ -769,7 +1365,8 @@ function App() {
                   <h3>Runtime target</h3>
                   <p className="content-card__text">
                     Choose which provider and model future AI calls should use.
-                    No external request is made from this panel.
+                    Canon Mode also controls whether homebrew, official material,
+                    or a balanced mix gets ranking priority during reference retrieval.
                   </p>
                 </div>
 
@@ -781,6 +1378,10 @@ function App() {
                   <li>
                     <span>Model</span>
                     <strong>{settingsForm.model || 'Not set yet'}</strong>
+                  </li>
+                  <li>
+                    <span>Canon Mode</span>
+                    <strong>{settingsForm.canonMode}</strong>
                   </li>
                   <li>
                     <span>OpenAI Key</span>
@@ -829,17 +1430,17 @@ function App() {
             <p className="content-footer__label">Selected Section</p>
             <p className="content-footer__text">
               {activeTab.id === 'story-engine'
-                ? 'Story Engine is active. Generate now sends your prompt and control selections to the local /api/generate route, which uses the provider configured in Settings.'
+                ? 'Story Engine is active. Generate now sends your prompt and control selections to the local /api/generate route, which uses the provider and Canon Mode configured in Settings.'
                 : activeTab.id === 'reference-library'
-                  ? 'Reference Library is active. Searches now query the local reference indexes and chunk records so you can browse sourcebooks, adventures, and homebrew text with a preview pane.'
-                : activeTab.id === 'world-bible'
-                  ? 'World Bible is active. Entries are searchable, filterable by tag, and saved as linked local markdown files in the matching /data collection folders.'
+                  ? 'Reference Library is active. Searches query the local reference indexes and chunk records, and ranking now respects the Canon Mode saved in Settings.'
+                  : activeTab.id === 'world-bible'
+                    ? 'World Bible is active. Entries are searchable, filterable by tag, and saved as linked local markdown files in the matching /data collection folders.'
                   : activeTab.id === 'chapters'
                     ? 'Chapters is active. Chapters save locally as JSON, scenes save as markdown, and the latest Story Engine output can be attached directly to the selected scene.'
                     : activeTab.id === 'adventure-builder'
                       ? 'Adventure Builder is active. Narrative can be transformed through the local AI route into structured quest hooks, encounters, loot, and basic stat blocks.'
                 : activeTab.id === 'settings'
-                  ? 'Settings is active. API keys are loaded from and saved to the local /data/settings.json file through the local backend only.'
+                  ? 'Settings is active. API keys, Canon Mode, and the Reference Library index are all managed locally from this panel.'
                   : `${activeTab.label} is active. The main panel swaps between static layout placeholders for each tab.`}
             </p>
           </footer>

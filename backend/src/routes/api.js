@@ -22,7 +22,13 @@ import {
   WorldBibleError,
 } from '../services/worldBibleService.js'
 import {
+  createSourceNote,
+  SourceNotesError,
+} from '../services/sourceNotesService.js'
+import {
+  getReferenceIndexStatus,
   readReferenceMarkdown,
+  rebuildReferenceIndexes,
   ReferenceLibraryError,
   referenceCollectionDirectoryNames,
   searchReferenceSources,
@@ -124,12 +130,14 @@ router.get('/references/content', async (req, res, next) => {
 
 router.get('/reference/search', async (req, res, next) => {
   try {
+    const settings = await readSettings()
     const results = await searchReferences({
       query: typeof req.query.q === 'string' ? req.query.q : '',
       sourceType:
         typeof req.query.sourceType === 'string' ? req.query.sourceType : '',
       sourceName:
         typeof req.query.sourceName === 'string' ? req.query.sourceName : '',
+      canonMode: settings.canonMode,
       limit: req.query.limit,
     })
 
@@ -139,6 +147,48 @@ router.get('/reference/search', async (req, res, next) => {
     })
   } catch (error) {
     if (error instanceof ReferenceSearchError) {
+      res.status(error.statusCode).json({
+        message: error.message,
+      })
+
+      return
+    }
+
+    next(error)
+  }
+})
+
+router.get('/reference/index-status', async (_req, res, next) => {
+  try {
+    const status = await getReferenceIndexStatus()
+
+    res.json({
+      ...status,
+      localOnly: true,
+    })
+  } catch (error) {
+    if (error instanceof ReferenceLibraryError) {
+      res.status(error.statusCode).json({
+        message: error.message,
+      })
+
+      return
+    }
+
+    next(error)
+  }
+})
+
+router.post('/reference/rebuild', async (_req, res, next) => {
+  try {
+    const status = await rebuildReferenceIndexes()
+
+    res.json({
+      ...status,
+      localOnly: true,
+    })
+  } catch (error) {
+    if (error instanceof ReferenceLibraryError) {
       res.status(error.statusCode).json({
         message: error.message,
       })
@@ -285,6 +335,24 @@ router.get('/world-bible/entries', async (_req, res, next) => {
 
     res.json(entries)
   } catch (error) {
+    next(error)
+  }
+})
+
+router.post('/source-notes', async (req, res, next) => {
+  try {
+    const sourceNote = await createSourceNote(req.body)
+
+    res.status(201).json(sourceNote)
+  } catch (error) {
+    if (error instanceof SourceNotesError) {
+      res.status(error.statusCode).json({
+        message: error.message,
+      })
+
+      return
+    }
+
     next(error)
   }
 })

@@ -17,6 +17,7 @@ const collectionDirectoryNames = [
   'adventures',
   'sessions',
   'lore',
+  'source-notes',
 ]
 
 const referenceDirectoryName = 'reference'
@@ -33,6 +34,7 @@ const defaultSettings = {
   model: '',
   openaiApiKey: '',
   geminiApiKey: '',
+  canonMode: 'Balanced',
 }
 
 const defaultTimeline = {

@@ -1,6 +1,7 @@
 import { readSettings } from './settingsService.js'
 import { generateTextWithProvider } from './providerTextService.js'
 import { buildWorldContext } from './worldContextService.js'
+import { retrieveReferenceContext } from './referenceSearchService.js'
 
 const SYSTEM_PROMPT = `You are a fantasy narrative engine, co-writer, and D&D adventure companion.
 
@@ -46,6 +47,14 @@ const VALID_POVS = new Set([
   'Third Person Omniscient',
   'Character-focused',
 ])
+const canonModeGuidance = {
+  'Prefer Homebrew':
+    'When reference snippets conflict, treat homebrew as the active canon the user explicitly chose for this run, while still using official material as supporting background when helpful.',
+  'Prefer Official Sources':
+    'Use sourcebooks as baseline rules and lore reference, use adventures as scenario and location support, and treat homebrew as optional inspiration unless the user explicitly elevates it.',
+  Balanced:
+    'Treat all retrieved references as supporting material only. Do not assume any imported text becomes active canon unless the user explicitly chooses it in the story or settings.',
+}
 
 const modeGuidance = {
   'Story Mode':
@@ -113,6 +122,18 @@ function validateChoice(value, fieldName, validChoices) {
   return value
 }
 
+function ensureOptionalBoolean(value, fieldName) {
+  if (typeof value === 'undefined') {
+    return false
+  }
+
+  if (typeof value !== 'boolean') {
+    throw new GenerationError(`"${fieldName}" must be a boolean.`, 400)
+  }
+
+  return value
+}
+
 function validateGeneratePayload(payload) {
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
     throw new GenerationError('Generation payload must be a JSON object.', 400)
@@ -141,6 +162,10 @@ function validateGeneratePayload(payload) {
       VALID_NARRATION,
     ),
     pov: validateChoice(pov, 'pov', VALID_POVS),
+    useReferenceLibrary: ensureOptionalBoolean(
+      payload.useReferenceLibrary,
+      'useReferenceLibrary',
+    ),
   }
 }
 
@@ -149,7 +174,7 @@ function buildRuntimeInstructions({
   tone,
   narrationStrength,
   pov,
-}, worldContext) {
+}, worldContext, referenceContext, canonMode) {
   return [
     SYSTEM_PROMPT,
     '',
@@ -158,6 +183,7 @@ function buildRuntimeInstructions({
     `- Tone: ${tone}`,
     `- Narration strength: ${narrationStrength}`,
     `- POV: ${pov}`,
+    `- Canon Mode: ${canonMode}`,
     '',
     'MODE BEHAVIOR:',
     `- ${modeGuidance[mode]}`,
@@ -166,7 +192,22 @@ function buildRuntimeInstructions({
     `- ${toneGuidance[tone]}`,
     `- ${narrationGuidance[narrationStrength]}`,
     `- ${povGuidance[pov]}`,
+    `- ${canonModeGuidance[canonMode]}`,
     ...(worldContext ? ['', worldContext] : []),
+    ...(referenceContext
+      ? [
+          '',
+          'REFERENCE CONTEXT RULES:',
+          '- Treat Reference Context as local support material for exact rules, items, places, monsters, factions, and lore details.',
+          '- Do not automatically treat imported reference text as active canon.',
+          '- Sourcebooks are general rules and lore reference. Adventures are scenario and location reference.',
+          '- Homebrew overrides official material only when Canon Mode explicitly prefers it or the user makes it active canon.',
+          '- Prefer exact matches from the supplied snippets when they are relevant to the user prompt.',
+          '- Use only the supplied snippets rather than assuming the rest of a source document.',
+          '',
+          referenceContext,
+        ]
+      : []),
     '',
     'OUTPUT:',
     '- Return clean, readable markdown or prose that suits the selected mode.',
@@ -180,10 +221,12 @@ function createPublicResponse(text, settings, request) {
     text,
     provider: settings.provider,
     model: settings.model,
+    canonMode: settings.canonMode,
     mode: request.mode,
     tone: request.tone,
     narrationStrength: request.narrationStrength,
     pov: request.pov,
+    useReferenceLibrary: request.useReferenceLibrary,
     generatedAt: new Date().toISOString(),
   }
 }
@@ -191,19 +234,37 @@ function createPublicResponse(text, settings, request) {
 export async function generateNarrative(payload) {
   const request = validateGeneratePayload(payload)
   const settings = await readSettings()
-  const worldContext = await buildWorldContext(request)
-  const runtimeInstructions = buildRuntimeInstructions(request, worldContext)
+  const [worldContext, referenceContext] = await Promise.all([
+    buildWorldContext(request),
+    request.useReferenceLibrary
+      ? retrieveReferenceContext({
+          query: request.userInput,
+          canonMode: settings.canonMode,
+          limit: 3,
+        })
+      : Promise.resolve({ text: '', chunks: [] }),
+  ])
+  const runtimeInstructions = buildRuntimeInstructions(
+    request,
+    worldContext,
+    referenceContext.text,
+    settings.canonMode,
+  )
   const providerResponse = await generateTextWithProvider({
     settings,
     userInput: request.userInput,
     systemInstructions: runtimeInstructions,
   })
 
-  return createPublicResponse(providerResponse.text, {
-    ...settings,
-    provider: providerResponse.provider,
-    model: providerResponse.model,
-  }, request)
+  return {
+    ...createPublicResponse(providerResponse.text, {
+      ...settings,
+      provider: providerResponse.provider,
+      model: providerResponse.model,
+    }, request),
+    referenceContextCount: referenceContext.chunks.length,
+    referenceContextChunks: referenceContext.chunks,
+  }
 }
 
 export { GenerationError }

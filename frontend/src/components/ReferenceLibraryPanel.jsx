@@ -115,6 +115,7 @@ function formatDate(value) {
 function ReferenceLibraryPanel() {
   const [query, setQuery] = useState('')
   const [sourceType, setSourceType] = useState('')
+  const [searchCanonMode, setSearchCanonMode] = useState('Balanced')
   const [results, setResults] = useState([])
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchError, setSearchError] = useState('')
@@ -146,6 +147,9 @@ function ReferenceLibraryPanel() {
 
         setResults(nextResults)
         setSearchTotal(typeof response?.total === 'number' ? response.total : nextResults.length)
+        setSearchCanonMode(
+          typeof response?.canonMode === 'string' ? response.canonMode : 'Balanced',
+        )
         setSelectedDocumentId((currentId) =>
           nextResults.some((result) => result.documentId === currentId)
             ? currentId
@@ -265,6 +269,10 @@ function ReferenceLibraryPanel() {
             </select>
           </label>
         </div>
+
+        <p className="reference-library__hint">
+          Ranking uses Canon Mode: <strong>{searchCanonMode}</strong>
+        </p>
 
         {searchError ? (
           <p className="form-message form-message--error">{searchError}</p>

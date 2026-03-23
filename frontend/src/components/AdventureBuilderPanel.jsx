@@ -92,6 +92,7 @@ function formatDate(value) {
 function AdventureBuilderPanel({
   latestStoryText,
   latestStoryGeneratedAt,
+  referenceHookHandoff,
 }) {
   const [narrative, setNarrative] = useState('')
   const [generating, setGenerating] = useState(false)
@@ -102,6 +103,11 @@ function AdventureBuilderPanel({
     typeof latestStoryText === 'string' &&
       latestStoryText.trim() &&
       latestStoryGeneratedAt,
+  )
+  const hasReferenceHook = Boolean(
+    typeof referenceHookHandoff?.content === 'string' &&
+      referenceHookHandoff.content.trim() &&
+      referenceHookHandoff.createdAt,
   )
 
   async function handleBuildAdventure() {
@@ -138,6 +144,16 @@ function AdventureBuilderPanel({
     }
 
     setNarrative(latestStoryText)
+    setError('')
+  }
+
+  function handleUseReferenceHook() {
+    if (!hasReferenceHook) {
+      setError('Create a reference-based hook in Story Engine first.')
+      return
+    }
+
+    setNarrative(referenceHookHandoff.content)
     setError('')
   }
 
@@ -199,6 +215,39 @@ function AdventureBuilderPanel({
             disabled={!hasLatestStory || generating}
           >
             Use Latest Story Output
+          </button>
+        </div>
+
+        <div className="adventure-builder__handoff">
+          <div className="adventure-builder__section-head">
+            <div>
+              <p className="content-card__label">Reference Hook Handoff</p>
+              <p className="adventure-builder__copy">
+                Pull a staged reference-inspired hook from Story Engine.
+              </p>
+            </div>
+            <span className="adventure-builder__hint">
+              {hasReferenceHook
+                ? formatDate(referenceHookHandoff.createdAt)
+                : 'No reference hook staged'}
+            </span>
+          </div>
+
+          <div className="adventure-builder__story-preview">
+            <p>
+              {hasReferenceHook
+                ? referenceHookHandoff.content
+                : 'Use “Convert to adventure hook” on a retrieved reference result in Story Engine to stage a hook here.'}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            className="settings-panel__button"
+            onClick={handleUseReferenceHook}
+            disabled={!hasReferenceHook || generating}
+          >
+            Use Reference Hook
           </button>
         </div>
 

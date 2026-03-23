@@ -68,12 +68,29 @@ export async function searchReferenceLibrary(params = {}, signal) {
   return fetchJson(`/api/reference/search${query ? `?${query}` : ''}`, { signal })
 }
 
+export async function getReferenceIndexStatus(signal) {
+  return fetchJson('/api/reference/index-status', { signal })
+}
+
+export async function rebuildReferenceIndex() {
+  return fetchJson('/api/reference/rebuild', {
+    method: 'POST',
+  })
+}
+
 export async function getReferenceDocument(id, signal) {
   return fetchJson(`/api/reference/document/${encodeURIComponent(id)}`, { signal })
 }
 
 export async function getReferenceChunk(chunkId, signal) {
   return fetchJson(`/api/reference/chunk/${encodeURIComponent(chunkId)}`, { signal })
+}
+
+export async function createSourceNote(payload) {
+  return fetchJson('/api/source-notes', {
+    method: 'POST',
+    body: payload,
+  })
 }
 
 export async function saveSettings(settings) {

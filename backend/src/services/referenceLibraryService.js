@@ -4,6 +4,7 @@ import path from 'node:path'
 import {
   dataDirectoryPath,
   ensureStorageStructure,
+  readFile,
   referenceCollectionDirectoryNames,
   referenceDirectoryName,
   saveFile,
@@ -624,6 +625,24 @@ async function writeReferenceIndexes(records, headings, chunks, generatedAt) {
   ])
 }
 
+function toSafeCount(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0
+}
+
+function buildReferenceIndexStatus({
+  generatedAt = null,
+  recordCount = 0,
+  headingCount = 0,
+  chunkCount = 0,
+} = {}) {
+  return {
+    indexedFileCount: toSafeCount(recordCount),
+    indexedHeadingCount: toSafeCount(headingCount),
+    indexedChunkCount: toSafeCount(chunkCount),
+    lastIndexedAt: typeof generatedAt === 'string' && generatedAt.trim() ? generatedAt : null,
+  }
+}
+
 function toReferenceSearchResult(record, score = 0) {
   return {
     id: record.id,
@@ -716,6 +735,38 @@ export async function ingestReferenceLibrary() {
     headings,
     chunks,
   }
+}
+
+export async function getReferenceIndexStatus() {
+  await ensureStorageStructure()
+
+  const [referenceIndex, headingsIndex, chunksIndex] = await Promise.all([
+    readFile(referenceIndexPath),
+    readFile(headingsIndexPath),
+    readFile(referenceChunksIndexPath),
+  ])
+
+  return buildReferenceIndexStatus({
+    generatedAt:
+      referenceIndex?.generatedAt ??
+      headingsIndex?.generatedAt ??
+      chunksIndex?.generatedAt ??
+      null,
+    recordCount: referenceIndex?.recordCount,
+    headingCount: headingsIndex?.headingCount,
+    chunkCount: chunksIndex?.chunkCount,
+  })
+}
+
+export async function rebuildReferenceIndexes() {
+  const { generatedAt, records, headings, chunks } = await ingestReferenceLibrary()
+
+  return buildReferenceIndexStatus({
+    generatedAt,
+    recordCount: records.length,
+    headingCount: headings.length,
+    chunkCount: chunks.length,
+  })
 }
 
 export async function scanReferenceSources({ category = '' } = {}) {

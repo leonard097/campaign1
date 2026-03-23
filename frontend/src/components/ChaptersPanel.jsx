@@ -105,6 +105,8 @@ function ChaptersPanel({
   latestStoryText,
   latestStoryGeneratedAt,
   defaultPov,
+  referenceLinkHandoff,
+  onConsumeReferenceLink,
 }) {
   const [chapters, setChapters] = useState([])
   const [referenceEntries, setReferenceEntries] = useState([])
@@ -215,6 +217,11 @@ function ChaptersPanel({
     typeof latestStoryText === 'string' &&
       latestStoryText.trim() &&
       latestStoryGeneratedAt,
+  )
+  const canAttachReferenceLink = Boolean(
+    typeof referenceLinkHandoff?.content === 'string' &&
+      referenceLinkHandoff.content.trim() &&
+      referenceLinkHandoff.createdAt,
   )
 
   function replaceChapterList(nextChapters) {
@@ -408,6 +415,51 @@ function ChaptersPanel({
       setError(
         saveError.message ||
           'Unable to attach the latest Story Engine output to the scene.',
+      )
+    } finally {
+      setSavingDraft(false)
+    }
+  }
+
+  async function handleAttachReferenceLink() {
+    if (!selectedChapter || !selectedScene) {
+      setError('Select a scene before attaching a reference note.')
+      return
+    }
+
+    if (!canAttachReferenceLink) {
+      setError('Stage a reference note in Story Engine before attaching it here.')
+      return
+    }
+
+    setSavingDraft(true)
+    setError('')
+    setSuccess('')
+
+    try {
+      const attachedContent = sceneDraft.content.trim()
+        ? `${sceneDraft.content.trim()}\n\n${referenceLinkHandoff.content.trim()}`
+        : referenceLinkHandoff.content.trim()
+      const savedScene = normalizeScene(
+        await updateScene(selectedChapter.id, selectedScene.id, {
+          title: sceneDraft.title,
+          content: attachedContent,
+          pov: sceneDraft.pov,
+          linkedCharacterIds: sceneDraft.linkedCharacterIds,
+          linkedLocationIds: sceneDraft.linkedLocationIds,
+        }),
+      )
+
+      await refreshChapters({
+        focusChapterId: selectedChapter.id,
+        focusSceneId: savedScene.id,
+      })
+      onConsumeReferenceLink?.()
+      setSuccess(`Attached the staged reference note to "${savedScene.title}".`)
+    } catch (saveError) {
+      setError(
+        saveError.message ||
+          'Unable to attach the staged reference note to the scene.',
       )
     } finally {
       setSavingDraft(false)
@@ -753,6 +805,39 @@ function ChaptersPanel({
                   disabled={savingDraft || !canAttachLatestStory}
                 >
                   {savingDraft ? 'Attaching...' : 'Attach Latest Story Output'}
+                </button>
+              </div>
+
+              <div className="chapters-panel__story-card">
+                <div className="chapters-panel__mini-head">
+                  <div>
+                    <p className="content-card__label">Reference Library Handoff</p>
+                    <p className="chapters-panel__copy">
+                      Attach a staged reference note to the selected scene.
+                    </p>
+                  </div>
+                  <span className="chapters-panel__hint">
+                    {canAttachReferenceLink
+                      ? formatDate(referenceLinkHandoff.createdAt)
+                      : 'No reference note staged'}
+                  </span>
+                </div>
+
+                <div className="chapters-panel__story-preview">
+                  <p>
+                    {canAttachReferenceLink
+                      ? referenceLinkHandoff.content
+                      : 'Use “Link to current chapter” on a retrieved Story Engine reference result to stage a note here.'}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  className="settings-panel__button"
+                  onClick={handleAttachReferenceLink}
+                  disabled={savingDraft || !canAttachReferenceLink}
+                >
+                  {savingDraft ? 'Attaching...' : 'Attach Reference Note'}
                 </button>
               </div>
 
